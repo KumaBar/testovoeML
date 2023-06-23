@@ -1,9 +1,12 @@
 import string
 import pymorphy2
-from sklearn.feature_extraction.text import CountVectorizer
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.model_selection import GridSearchCV
 from sklearn.cluster import KMeans
 from scipy.cluster.hierarchy import dendrogram, linkage
 import matplotlib.pyplot as plt
+from sklearn.metrics import silhouette_score, calinski_harabasz_score, davies_bouldin_score
+
 
 # загрузка данных
 with open('queries.txt', 'r', encoding='utf-8') as f:
@@ -28,9 +31,9 @@ for query in data:
     clean_query = preprocess(query)
     clean_queries.append(clean_query)
 
-# векторизация слов, по количеству вхождений
-num_clusters = 5
-vectorizer = CountVectorizer()
+# векторизация слов, по важности слов
+num_clusters = 20
+vectorizer = TfidfVectorizer()
 X = vectorizer.fit_transform(clean_queries)
 
 # обучение кластеризации
@@ -43,15 +46,24 @@ fig = plt.figure(figsize=(25, 10))
 dn = dendrogram(Z)
 
 # вывод наиболее приближенных слов в кластерах
-print("Топ запросов по теме:")
+
 order_centroids = km.cluster_centers_.argsort()[:, ::-1]
 terms = vectorizer.get_feature_names_out()
+
+
+# вывод TF-IDF коэффициентов для каждого слова
 for i in range(num_clusters):
-    print("Cluster %d:" % i)
+    print("Кластер %d:" % i)
+    print("Топ слов и коэффициент tf-idf:")
     for ind in order_centroids[i, :10]:
-        print(' %s' % terms[ind])
+        print(' %s (%f)' % (terms[ind], km.cluster_centers_[i, ind]))
     print()
 
+parameters = {'n_clusters': [5, 10, 15, 20], 'init': ['k-means++', 'random'],
+              'n_init': [10, 20, 30], 'algorithm': ['full', 'elkan']}
+grid_search = GridSearchCV(KMeans(), parameters, cv=5, n_jobs=-1)
+grid_search.fit(X)
+print(grid_search.best_params_)
 # количество объектов у каждого кластера
 labels = km.labels_
 result = {}
@@ -60,3 +72,15 @@ for i in range(num_clusters):
 print(result)
 
 plt.show()
+
+# метрики качества
+silhouette_avg = silhouette_score(X, km.labels_)
+print("Silhouette score:", silhouette_avg)
+
+
+ch_score = calinski_harabasz_score(X.toarray(), km.labels_)
+print("Calinski-Harabasz Index:", ch_score)
+
+
+db_score = davies_bouldin_score(X.toarray(), km.labels_)
+print("Davies-Bouldin Index:", db_score)
